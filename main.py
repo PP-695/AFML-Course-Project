@@ -7,6 +7,7 @@ import torch
 import torch.distributed as dist
 from omegaconf import OmegaConf
 from trainer import MetaTrainer, Trainer
+from trainer_class_aware import ClassAwareMetaTrainer
 from utils.config_omega import cfg
 from utils.err_handler import init_err_handler
 
@@ -69,6 +70,8 @@ def main(cfg, device):
     logger.section("Trainer Initialization")
     if not cfg.use_meta:
         trainer = Trainer(cfg, device)
+    elif cfg.use_class_aware:
+        trainer = ClassAwareMetaTrainer(cfg, device)
     else:
         trainer = MetaTrainer(cfg, device)
 
