@@ -89,6 +89,19 @@ config = {
     "meta_lr": 1e-3,
     "meta_update_freq": 1,
     "meta_inner_steps": 5,
+    # Class-aware meta-learning configs
+    "use_class_aware": False,
+    "meta_objective": "balanced_accuracy",  # balanced_accuracy, gmean, worst_case
+    "focus_on_tail": True,
+    "tail_loss_weight": 2.0,
+    "rank_divergence_penalty": 0.01,
+    "alpha_smoothness_penalty": 0.005,
+    "head_threshold": 100,
+    "tail_threshold": 20,
+    "head_rank_factor": 0.5,
+    "tail_rank_factor": 2.0,
+    "head_alpha_factor": 0.5,
+    "tail_alpha_factor": 2.0,
 }
 
 # Convert to OmegaConf

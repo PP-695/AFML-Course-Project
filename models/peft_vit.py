@@ -20,6 +20,7 @@ from .peft_modules import (
     MetaAdapter,
     MetaAdaptFormer,
 )
+from .class_aware_peft import ClassAwareMetaLoRA, ClassAwareMLPLoRA
 
 
 class ViT_Tuner(nn.Module):
@@ -86,6 +87,7 @@ class ViT_Tuner(nn.Module):
         scale_alpha = cfg.scale_alpha
         use_flora = cfg.use_flora
         use_meta = cfg.use_meta
+        use_class_aware = getattr(cfg, 'use_class_aware', False)
         use_ssf_attn = cfg.ssf_attn
         use_ssf_mlp = cfg.ssf_mlp
         use_ssf_ln = cfg.ssf_ln
@@ -289,41 +291,85 @@ class ViT_Tuner(nn.Module):
             flora_arch = cfg.flora.arch
             # Initialize an empty list of FLoRA modules for each layer
             flora_list = [None] * n_layers
+            
+            # Determine if we should use class-aware modules
+            use_class_aware_flora = use_class_aware and use_meta
+            
+            # Get class distribution if available (will be set later by trainer)
+            cls_num_list = None  # Will be initialized by trainer
 
             # Create FLoRA modules for specified layers
             for layer_idx in flora_arch.layers:
                 flora_modules = {}
                 for module_name in flora_arch.modules:
                     if module_name in ["q", "k", "v", "out"]:
-                        flora_modules[module_name] = FLoRA(
-                            in_dim=emb_dim,
-                            rank=flora_arch.rank,
-                            alpha=flora_arch.alpha,
-                            dtype=dtype,
-                        )
+                        if use_class_aware_flora:
+                            flora_modules[module_name] = ClassAwareMetaLoRA(
+                                in_dim=emb_dim,
+                                bottle_dim=flora_arch.rank,
+                                alpha=flora_arch.alpha if flora_arch.alpha is not None else 1.0,
+                                dtype=dtype,
+                                use_meta=use_meta,
+                                num_classes=num_classes,
+                                cls_num_list=cls_num_list,
+                            )
+                        else:
+                            flora_modules[module_name] = FLoRA(
+                                in_dim=emb_dim,
+                                rank=flora_arch.rank,
+                                alpha=flora_arch.alpha,
+                                dtype=dtype,
+                            )
                     elif module_name == "mlp1":
-                        flora_modules[module_name] = FLoRA(
-                            in_dim=emb_dim,
-                            rank=flora_arch.rank,
-                            alpha=flora_arch.alpha,
-                            out_dim=mlp_in_dim,
-                            dtype=dtype,
-                        )
+                        if use_class_aware_flora:
+                            flora_modules[module_name] = ClassAwareMLPLoRA(
+                                in_dim=emb_dim,
+                                bottle_dim=flora_arch.rank,
+                                out_dim=mlp_in_dim,
+                                alpha=flora_arch.alpha if flora_arch.alpha is not None else 1.0,
+                                dtype=dtype,
+                                use_meta=use_meta,
+                                num_classes=num_classes,
+                                cls_num_list=cls_num_list,
+                            )
+                        else:
+                            flora_modules[module_name] = FLoRA(
+                                in_dim=emb_dim,
+                                rank=flora_arch.rank,
+                                alpha=flora_arch.alpha,
+                                out_dim=mlp_in_dim,
+                                dtype=dtype,
+                            )
                     elif module_name == "mlp2":
-                        flora_modules[module_name] = FLoRA(
-                            in_dim=mlp_in_dim,
-                            rank=flora_arch.rank,
-                            alpha=flora_arch.alpha,
-                            out_dim=emb_dim,
-                            dtype=dtype,
-                        )
+                        if use_class_aware_flora:
+                            flora_modules[module_name] = ClassAwareMLPLoRA(
+                                in_dim=mlp_in_dim,
+                                bottle_dim=flora_arch.rank,
+                                out_dim=emb_dim,
+                                alpha=flora_arch.alpha if flora_arch.alpha is not None else 1.0,
+                                dtype=dtype,
+                                use_meta=use_meta,
+                                num_classes=num_classes,
+                                cls_num_list=cls_num_list,
+                            )
+                        else:
+                            flora_modules[module_name] = FLoRA(
+                                in_dim=mlp_in_dim,
+                                rank=flora_arch.rank,
+                                alpha=flora_arch.alpha,
+                                out_dim=emb_dim,
+                                dtype=dtype,
+                            )
                     else:
                         raise ValueError(f"Invalid module name: {module_name}")
                 if flora_modules:
                     flora_list[layer_idx] = nn.ModuleDict(flora_modules)
 
             flora_list = nn.ModuleList(flora_list)
-            print(f"FLoRA initialized with rank {flora_arch.rank} for modules {flora_arch.modules}")
+            if use_class_aware_flora:
+                print(f"ClassAwareMetaLoRA initialized with rank {flora_arch.rank} for {num_classes} classes")
+            else:
+                print(f"FLoRA initialized with rank {flora_arch.rank} for modules {flora_arch.modules}")
         else:
             flora_list = nn.ModuleList([None] * n_layers)
             print("FLoRA not used.")
